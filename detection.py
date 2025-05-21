@@ -11,7 +11,7 @@ from collections import Counter
 from moviepy import VideoFileClip, AudioFileClip, concatenate_audioclips
 
 # Khởi tạo mô hình YOLO với model được huấn luyện trước (YOLOv11 nano)
-model_name = "yolo11n"
+model_name = "yolo11s"
 
 # Xác định nhãn đối tượng cần detect (ví dụ: 0 có thể là "person" nếu dùng COCO dataset)
 target_label = 0
@@ -58,8 +58,11 @@ def resize(frame, target_height):
     5. Return the aspect ratio and resized frame.
     """
 
+    if target_height is None:
+        return 1, frame
     original_height = frame.shape[0]  # Get original height
     original_width = frame.shape[1]   # Get original width
+    print(f"target_height: {target_height}")
     aspect_ratio = original_width / original_height  # Calculate aspect ratio
     target_width = int(target_height * aspect_ratio)  # Calculate new width
 
@@ -143,16 +146,19 @@ def tracking(args, model):
 
         # Nếu chế độ debug được bật, tô màu khu vực ROI lên frame
         if args.debug:
-            frame = cv2.cvtColor(frame, cv2.COLOR_BGR2BGRA)
-            overlay = np.zeros_like(frame, dtype=np.uint8)
-            cv2.fillPoly(overlay, [points], (0, 0, 255,
-                         128))  # Tô màu đỏ có độ mờ 50%
+            if args.save:
+                cv2.polylines(frame, [points], isClosed=True, color=(0, 0, 255), thickness=2)
+            else:
+                frame = cv2.cvtColor(frame, cv2.COLOR_BGR2BGRA)
+                overlay = np.zeros_like(frame, dtype=np.uint8)
+                cv2.fillPoly(overlay, [points], (0, 0, 255,
+                            128))  # Tô màu đỏ có độ mờ 50%
 
-            # Áp dụng lớp phủ lên frame hiện tại bằng cách sử dụng alpha blending
-            alpha = overlay[:, :, 3] / 255.0
-            for c in range(3):
-                frame[:, :, c] = (1 - alpha) * frame[:, :, c] + \
-                    alpha * overlay[:, :, c]
+                # Áp dụng lớp phủ lên frame hiện tại bằng cách sử dụng alpha blending
+                alpha = overlay[:, :, 3] / 255.0
+                for c in range(3):
+                    frame[:, :, c] = (1 - alpha) * frame[:, :, c] + \
+                        alpha * overlay[:, :, c]
 
         # Duyệt qua kết quả từ YOLO để xử lý từng đối tượng phát hiện được
         for r in results:
@@ -239,8 +245,7 @@ def tracking(args, model):
                 fourcc = cv2.VideoWriter_fourcc(*'mp4v')  # Xác định codec để ghi video (MP4)
                 # Khởi tạo VideoWriter để lưu video đầu ra với định dạng, FPS và kích thước gốc
                 out = cv2.VideoWriter(f"output_{file_name}", fourcc, math.ceil(fps), (original_width, original_height))
-            rgb_image = cv2.cvtColor(frame.copy(), cv2.COLOR_BGRA2RGB)  # Chuyển đổi frame từ BGRA sang RGB để ghi đúng màu
-            out.write(rgb_image)  # Ghi frame đã xử lý vào video đầu ra
+            out.write(frame)  # Ghi frame đã xử lý vào video đầu ra
         # Hiển thị video với các đối tượng được theo dõi
         cv2.imshow("YOLOv11s Human Tracking", frame)
 

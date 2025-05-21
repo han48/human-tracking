@@ -2,6 +2,7 @@ import os
 import cv2
 import json
 import time
+import math
 import datetime
 import argparse
 import numpy as np
@@ -27,14 +28,14 @@ videoCap = cv2.VideoCapture(file_name)  # Đọc video từ file
 # videoCap = cv2.VideoCapture(0)  # Đọc video từ webcam nếu cần
 
 # Cấu hình buffer để giảm độ trễ khi đọc video (giúp tăng FPS)
-# videoCap.set(cv2.CAP_PROP_BUFFERSIZE, 2)
+videoCap.set(cv2.CAP_PROP_BUFFERSIZE, 2)
 
 # Bật tối ưu hóa OpenCV để tăng tốc xử lý hình ảnh
-# cv2.setUseOptimized(True)
+cv2.setUseOptimized(True)
 
 # Kiểm tra xem OpenCV có hỗ trợ OpenCL không (nếu có thì bật lên để tận dụng GPU)
-# if cv2.ocl.haveOpenCL():
-#     cv2.ocl.setUseOpenCL(True)
+if cv2.ocl.haveOpenCL():
+    cv2.ocl.setUseOpenCL(True)
 
 
 def resize(frame, target_height):
@@ -237,7 +238,7 @@ def tracking(args, model):
                 original_width = frame.shape[1]  # Lấy chiều rộng của frame
                 fourcc = cv2.VideoWriter_fourcc(*'mp4v')  # Xác định codec để ghi video (MP4)
                 # Khởi tạo VideoWriter để lưu video đầu ra với định dạng, FPS và kích thước gốc
-                out = cv2.VideoWriter(f"output_{file_name}", fourcc, fps, (original_width, original_height))
+                out = cv2.VideoWriter(f"output_{file_name}", fourcc, math.ceil(fps), (original_width, original_height))
             rgb_image = cv2.cvtColor(frame.copy(), cv2.COLOR_BGRA2RGB)  # Chuyển đổi frame từ BGRA sang RGB để ghi đúng màu
             out.write(rgb_image)  # Ghi frame đã xử lý vào video đầu ra
         # Hiển thị video với các đối tượng được theo dõi
@@ -251,12 +252,12 @@ def tracking(args, model):
     if args.save:
         print(f"Save image to: output_{file_name}")
         out.release()
+        video_clip = VideoFileClip(f"output_{file_name}")  # Đọc video đầu ra đã tạo
+        audio_clip = AudioFileClip(file_name)  # Đọc file âm thanh cần ghép vào video
+        final_clip = video_clip.with_audio(audio_clip)  # Ghép âm thanh vào video
+        final_clip.write_videofile(f"final_{file_name}", codec='libx264', audio_codec='aac')  # Xuất video có âm thanh
     videoCap.release()
     cv2.destroyAllWindows()
-    video_clip = VideoFileClip(f"output_{file_name}")  # Đọc video đầu ra đã tạo
-    audio_clip = AudioFileClip(file_name)  # Đọc file âm thanh cần ghép vào video
-    final_clip = video_clip.with_audio(audio_clip)  # Ghép âm thanh vào video
-    final_clip.write_videofile(f"output_{file_name}", codec='libx264', audio_codec='aac')  # Xuất video có âm thanh
 
 
 def select_area(args):

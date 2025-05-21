@@ -7,6 +7,7 @@ import argparse
 import numpy as np
 from ultralytics import YOLO
 from collections import Counter
+from moviepy import VideoFileClip, AudioFileClip, concatenate_audioclips
 
 # Khởi tạo mô hình YOLO với model được huấn luyện trước (YOLOv11 nano)
 model_name = "yolo11n"
@@ -228,18 +229,19 @@ def tracking(args, model):
                 cv2.putText(frame, f"{key}: {value}", (50, 50 + index * 30),
                             cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
 
+        frame_count += 1  # Tăng biến đếm số lượng frame đã xử lý
+        if args.save:  # Kiểm tra xem có yêu cầu lưu video hay không
+            if out is None:  # Nếu chưa khởi tạo VideoWriter, tiến hành khởi tạo
+                fps = videoCap.get(cv2.CAP_PROP_FPS)  # Lấy số khung hình trên giây (FPS) từ video gốc
+                original_height = frame.shape[0]  # Lấy chiều cao của frame
+                original_width = frame.shape[1]  # Lấy chiều rộng của frame
+                fourcc = cv2.VideoWriter_fourcc(*'mp4v')  # Xác định codec để ghi video (MP4)
+                # Khởi tạo VideoWriter để lưu video đầu ra với định dạng, FPS và kích thước gốc
+                out = cv2.VideoWriter(f"output_{file_name}", fourcc, fps, (original_width, original_height))
+            rgb_image = cv2.cvtColor(frame.copy(), cv2.COLOR_BGRA2RGB)  # Chuyển đổi frame từ BGRA sang RGB để ghi đúng màu
+            out.write(rgb_image)  # Ghi frame đã xử lý vào video đầu ra
         # Hiển thị video với các đối tượng được theo dõi
         cv2.imshow("YOLOv11s Human Tracking", frame)
-        frame_count += 1
-        if args.save:
-            if out is None:
-                fps = videoCap.get(cv2.CAP_PROP_FPS)
-                original_height = frame.shape[0]  # Get original height
-                original_width = frame.shape[1]   # Get original width
-                fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-                out = cv2.VideoWriter(f"output_{file_name}", fourcc, fps, (original_width, original_height))
-            rgb_image = cv2.cvtColor(frame, cv2.COLOR_BGRA2RGB)
-            out.write(rgb_image)
 
         # Nhấn 'q' để thoát
         if cv2.waitKey(1) & 0xFF == ord("q"):
@@ -251,6 +253,10 @@ def tracking(args, model):
         out.release()
     videoCap.release()
     cv2.destroyAllWindows()
+    video_clip = VideoFileClip(f"output_{file_name}")  # Đọc video đầu ra đã tạo
+    audio_clip = AudioFileClip(file_name)  # Đọc file âm thanh cần ghép vào video
+    final_clip = video_clip.with_audio(audio_clip)  # Ghép âm thanh vào video
+    final_clip.write_videofile(f"output_{file_name}", codec='libx264', audio_codec='aac')  # Xuất video có âm thanh
 
 
 def select_area(args):

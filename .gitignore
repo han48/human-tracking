@@ -172,3 +172,10 @@ cython_debug/
 
 # PyPI configuration file
 .pypirc
+
+*_openvino_model
+*.mlpackage
+*.pt
+*.onnx
+*.mp4
+config.json*

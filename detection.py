@@ -9,7 +9,7 @@ from ultralytics import YOLO
 from collections import Counter
 
 # Khởi tạo mô hình YOLO với model được huấn luyện trước (YOLOv11 nano)
-model = YOLO('yolo11n.pt')
+model_name = "yolo11n"
 
 # Xác định nhãn đối tượng cần detect (ví dụ: 0 có thể là "person" nếu dùng COCO dataset)
 target_label = 0
@@ -21,21 +21,50 @@ object_paths = {}
 object_positions = {}
 
 # Mở video từ file hoặc camera (chọn file video hoặc webcam)
-videoCap = cv2.VideoCapture('sample1.mp4')  # Đọc video từ file
+file_name = "sample1.mp4"
+videoCap = cv2.VideoCapture(file_name)  # Đọc video từ file
 # videoCap = cv2.VideoCapture(0)  # Đọc video từ webcam nếu cần
 
 # Cấu hình buffer để giảm độ trễ khi đọc video (giúp tăng FPS)
-videoCap.set(cv2.CAP_PROP_BUFFERSIZE, 2)
+# videoCap.set(cv2.CAP_PROP_BUFFERSIZE, 2)
 
 # Bật tối ưu hóa OpenCV để tăng tốc xử lý hình ảnh
-cv2.setUseOptimized(True)
+# cv2.setUseOptimized(True)
 
 # Kiểm tra xem OpenCV có hỗ trợ OpenCL không (nếu có thì bật lên để tận dụng GPU)
-if cv2.ocl.haveOpenCL():
-    cv2.ocl.setUseOpenCL(True)
+# if cv2.ocl.haveOpenCL():
+#     cv2.ocl.setUseOpenCL(True)
 
 
-def tracking(args):
+def resize(frame, target_height):
+    """
+    Resize an image frame while maintaining its aspect ratio.
+
+    Parameters:
+    - frame (numpy.ndarray): The input image frame.
+    - target_height (int): The desired height of the resized frame.
+
+    Returns:
+    - aspect_ratio (float): The aspect ratio (width/height) of the original frame.
+    - resized_frame (numpy.ndarray): The resized frame maintaining the original aspect ratio.
+
+    Processing:
+    1. Extract the original width and height from the frame.
+    2. Calculate the aspect ratio of the original frame.
+    3. Compute the new width based on the aspect ratio and target height.
+    4. Resize the frame using OpenCV while preserving aspect ratio.
+    5. Return the aspect ratio and resized frame.
+    """
+
+    original_height = frame.shape[0]  # Get original height
+    original_width = frame.shape[1]   # Get original width
+    aspect_ratio = original_width / original_height  # Calculate aspect ratio
+    target_width = int(target_height * aspect_ratio)  # Calculate new width
+
+    return aspect_ratio, cv2.resize(frame, (target_width, target_height))
+
+
+def tracking(args, model):
     """
     Theo dõi và xác định trạng thái của các đối tượng trong video bằng YOLO.
 
@@ -51,6 +80,8 @@ def tracking(args):
     Tham số:
     - args (argparse.Namespace): Đối tượng chứa các tham số dòng lệnh từ argparse.
       - args.debug (bool): Nếu True, bật chế độ debug để hiển thị đối tượng.
+      - args.device (string): Thiết bị được sử dụng cho quá trình nhận diện.
+    - model: Đối tượng YOLO Model
 
     Giá trị trả về:
     - Không có giá trị trả về trực tiếp. Hiển thị kết quả theo dõi trên màn hình.
@@ -81,12 +112,15 @@ def tracking(args):
     points = np.array([config['p1'], config['p2'],
                       config['p3'], config['p4']], np.int32)
     points = points.reshape((-1, 1, 2))
+    out = None
+    frame_count = 0
 
     while True:
         # Đọc frame từ video
         ret, frame = videoCap.read()
         if not ret:
             break
+        ratio, frame = resize(frame, args.height)
 
         # Tính FPS bằng cách đo khoảng thời gian giữa hai khung hình
         new_time = time.time()
@@ -98,7 +132,12 @@ def tracking(args):
             frame.shape[1] - 200, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 0), 2)
 
         # Sử dụng YOLO để theo dõi đối tượng được chỉ định
-        results = model.track(frame, persist=True, classes=[target_label])
+        if args.device is None:
+            results = model.track(frame, persist=True,
+                                  verbose=args.verbose, classes=[target_label])
+        else:
+            results = model.track(frame, persist=True, verbose=args.verbose, classes=[
+                                  target_label], device=args.device)
 
         # Nếu chế độ debug được bật, tô màu khu vực ROI lên frame
         if args.debug:
@@ -162,9 +201,14 @@ def tracking(args):
 
         # Đếm số lượng đối tượng trong khu vực quan tâm
         filtered_items = {k: v for k,
-                          v in object_positions.items() if len(v) >= 2}
+                          v in object_positions.items() if len(v) >= 2 and len(v) % 2 == 0}
         last_values = [v[-1] for v in filtered_items.values()]
         counted = Counter(last_values)
+        # Đếm số lượng đối tượng chỉ đi qua khu vực quan tâm
+        through = sum(1 for key, value in object_positions.items()
+                      if len(value) > 2 and len(value) % 2 != 0)
+        if through > 0:
+            counted['THROUGH'] = through
 
         if len(counted) > 0:
             # Tạo khung hiển thị số lượng đối tượng INSIDE/OUTSIDE ở góc trên cùng
@@ -186,12 +230,25 @@ def tracking(args):
 
         # Hiển thị video với các đối tượng được theo dõi
         cv2.imshow("YOLOv11s Human Tracking", frame)
+        frame_count += 1
+        if args.save:
+            if out is None:
+                fps = videoCap.get(cv2.CAP_PROP_FPS)
+                original_height = frame.shape[0]  # Get original height
+                original_width = frame.shape[1]   # Get original width
+                fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+                out = cv2.VideoWriter(f"output_{file_name}", fourcc, fps, (original_width, original_height))
+            rgb_image = cv2.cvtColor(frame, cv2.COLOR_BGRA2RGB)
+            out.write(rgb_image)
 
         # Nhấn 'q' để thoát
         if cv2.waitKey(1) & 0xFF == ord("q"):
             break
 
     # Giải phóng tài nguyên và đóng cửa sổ hiển thị
+    if args.save:
+        print(f"Save image to: output_{file_name}")
+        out.release()
     videoCap.release()
     cv2.destroyAllWindows()
 
@@ -275,6 +332,7 @@ def select_area(args):
             ret, frame = videoCap.read()  # Đọc frame từ video
             if not ret:
                 break
+        ratio, frame = resize(frame, args.height)
 
         # Tính FPS bằng cách đo khoảng thời gian giữa hai khung hình
         new_time = time.time()
@@ -335,14 +393,32 @@ def main():
     parser = argparse.ArgumentParser(description="Tracking human")
     parser.add_argument(
         "--action", help="Action (tracking or config)", default='tracking')
-    parser.add_argument("--debug", help="Debug mode", action="store_true")
+    parser.add_argument("--debug", help="Debug mode",
+                        action="store_true", default=True)
+    parser.add_argument(
+        "--height", help="Height of frame after resize", type=int)
+    parser.add_argument("--model", help="Model: pt or onnx or openvino")
+    parser.add_argument("--save", help="Save video tracking",
+                        action="store_true", default=False)
+    parser.add_argument("--verbose", help="Yolo verbose tracking",
+                        action="store_true", default=False)
+    parser.add_argument(
+        "--device", help="Model: 0 (NVIDAI GPU), cpu, gpu, npu, mps, intel:gpu, intel:npu, intel:cpu")
 
     args = parser.parse_args()
 
     if args.action == 'config':
         select_area(args)
     else:
-        tracking(args)
+        if args.model == 'onnx':
+            model = YOLO(f"{model_name}.onnx")
+        if args.model == 'coreml':
+            model = YOLO(f"{model_name}.mlpackage")
+        if args.model == 'openvino':
+            model = YOLO(f"{model_name}_openvino_model/")
+        else:
+            model = YOLO(f"{model_name}.pt")
+        tracking(args, model)
 
 
 if __name__ == "__main__":

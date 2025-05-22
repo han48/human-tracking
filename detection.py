@@ -37,6 +37,54 @@ cv2.setUseOptimized(True)
 if cv2.ocl.haveOpenCL():
     cv2.ocl.setUseOpenCL(True)
 
+def relative_position_analysis(point, points):
+    """
+    Xác định vị trí của điểm so với đa giác.
+
+    Tham số:
+    - point: Tuple (x, y), tọa độ của điểm cần kiểm tra.
+    - points: Mảng numpy chứa tập hợp các điểm của đa giác.
+
+    Trả về:
+    - Chuỗi 'INSIDE' nếu điểm nằm bên trong đa giác.
+    - Chuỗi 'OUTSIDE' nếu điểm nằm ngoài đa giác.
+    """
+    if cv2.pointPolygonTest(points, point, False) > 0:
+        status = "INSIDE"
+    else:
+        status = "OUTSIDE"
+    return status
+
+def standardize_relative_position(object_positions):
+    """
+    Chuẩn hóa vị trí tương đối của các đối tượng trong khu vực quan tâm.
+
+    Tham số:
+    - object_positions: Dictionary chứa vị trí của các đối tượng, với key là ID và value là danh sách vị trí.
+
+    Trả về:
+    - Counter chứa số lượng các đối tượng ở vị trí cuối cùng, cùng với số lượng đối tượng đi qua khu vực quan tâm.
+    """
+    
+    # Lọc ra các đối tượng có ít nhất 2 vị trí và có số lượng vị trí là số chẵn
+    filtered_items = {k: v for k, v in object_positions.items() if len(v) >= 2 and len(v) % 2 == 0}
+
+    # Lấy giá trị cuối cùng của mỗi đối tượng sau khi lọc
+    last_values = [v[-1] for v in filtered_items.values()]
+    
+    # Đếm số lượng đối tượng dựa trên giá trị cuối cùng
+    counted = Counter(last_values)
+
+    # Đếm số lượng đối tượng chỉ đi qua khu vực quan tâm (số lẻ vị trí và có nhiều hơn 2 vị trí)
+    through = sum(1 for key, value in object_positions.items() if len(value) > 2 and len(value) % 2 != 0)
+
+    # Nếu có đối tượng đi qua, thêm thông tin này vào Counter
+    if through > 0:
+        counted['THROUGH'] = through
+
+    return counted
+
+
 
 def resize(frame, target_height):
     """
@@ -176,10 +224,7 @@ def tracking(args, model):
                 point = (center_x, center_y)
 
                 # Kiểm tra xem đối tượng nằm trong khu vực quan tâm hay không
-                if cv2.pointPolygonTest(points, point, False) > 0:
-                    status = "INSIDE"
-                else:
-                    status = "OUTSIDE"
+                status = relative_position_analysis(point, points)
 
                 # Cập nhật trạng thái của đối tượng
                 if obj_id in object_positions:
@@ -205,17 +250,8 @@ def tracking(args, model):
                     for i in range(1, len(object_paths[obj_id])):
                         cv2.line(
                             frame, object_paths[obj_id][i-1], object_paths[obj_id][i], (0, 0, 255), 2)
-
-        # Đếm số lượng đối tượng trong khu vực quan tâm
-        filtered_items = {k: v for k,
-                          v in object_positions.items() if len(v) >= 2 and len(v) % 2 == 0}
-        last_values = [v[-1] for v in filtered_items.values()]
-        counted = Counter(last_values)
-        # Đếm số lượng đối tượng chỉ đi qua khu vực quan tâm
-        through = sum(1 for key, value in object_positions.items()
-                      if len(value) > 2 and len(value) % 2 != 0)
-        if through > 0:
-            counted['THROUGH'] = through
+    
+        counted = standardize_relative_position(object_positions)
 
         if len(counted) > 0:
             # Tạo khung hiển thị số lượng đối tượng INSIDE/OUTSIDE ở góc trên cùng

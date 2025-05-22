@@ -62,7 +62,6 @@ def resize(frame, target_height):
         return 1, frame
     original_height = frame.shape[0]  # Get original height
     original_width = frame.shape[1]   # Get original width
-    print(f"target_height: {target_height}")
     aspect_ratio = original_width / original_height  # Calculate aspect ratio
     target_width = int(target_height * aspect_ratio)  # Calculate new width
 
@@ -333,6 +332,9 @@ def select_area(args):
                 exit()
         elif event == cv2.EVENT_MOUSEMOVE:  # Khi di chuyển chuột
             last_point = (x, y)  # Cập nhật vị trí hiện tại của chuột
+            tmpFrame = frame.copy()
+            cv2.line(tmpFrame, clicked_points[-1], last_point, (0, 255, 0), 2)
+            cv2.imshow("Video", tmpFrame)
 
     paused = False  # Biến kiểm soát trạng thái tạm dừng video
     cv2.namedWindow("Video")  # Tạo cửa sổ video
@@ -356,19 +358,14 @@ def select_area(args):
             frame.shape[1] - 200, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 0), 2)
 
         # Nếu đã có ít nhất một điểm click, vẽ đường nối giữa các điểm
-        if len(clicked_points) >= 1:
-            # Tạo bản sao danh sách điểm đã click
-            clicked_points_copy = clicked_points.copy()
-            # Thêm điểm hiện tại của chuột vào danh sách
-            clicked_points_copy.append(last_point)
-
+        if len(clicked_points) > 1:
             # Vẽ đường nối giữa các điểm đã click
-            for i in range(len(clicked_points_copy) - 1):
-                cv2.line(
-                    frame, clicked_points_copy[i], clicked_points_copy[i + 1], (0, 255, 0), 2)
+            for i in range(len(clicked_points) - 1):
+                cv2.line(frame, clicked_points[i], clicked_points[i + 1], (0, 255, 0), 2)
 
         # Hiển thị video với vùng giám sát được xác định
-        cv2.imshow("Video", frame)
+        if not paused:
+            cv2.imshow("Video", frame)
 
         # Xử lý phím bấm
         key = cv2.waitKey(25) & 0xFF

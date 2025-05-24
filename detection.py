@@ -14,7 +14,8 @@ from moviepy import VideoFileClip, AudioFileClip, concatenate_audioclips
 model_name = "yolo11s"
 
 # Xác định nhãn đối tượng cần detect (ví dụ: 0 có thể là "person" nếu dùng COCO dataset)
-target_label = 0
+# target_labels = [0]
+target_labels = None
 
 # Khởi tạo dictionary để lưu đường đi của các đối tượng
 object_paths = {}
@@ -123,7 +124,7 @@ def tracking(args, model):
     Mô tả:
     - Đọc video từ file hoặc webcam.
     - Tải cấu hình khu vực quan tâm (ROI) từ file `config.json`.
-    - Theo dõi đối tượng được chỉ định (`target_label`) bằng mô hình YOLO.
+    - Theo dõi đối tượng được chỉ định (`target_labels`) bằng mô hình YOLO.
     - Tính toán FPS và hiển thị thông tin trên màn hình.
     - Xác định đối tượng nằm trong hoặc ngoài khu vực ROI.
     - Vẽ bounding box, đường di chuyển của đối tượng, và hiển thị thống kê.
@@ -186,10 +187,9 @@ def tracking(args, model):
         # Sử dụng YOLO để theo dõi đối tượng được chỉ định
         if args.device is None:
             results = model.track(frame, persist=True,
-                                  verbose=args.verbose, classes=[target_label])
+                                  verbose=args.verbose, classes=target_labels)
         else:
-            results = model.track(frame, persist=True, verbose=args.verbose, classes=[
-                                  target_label], device=args.device)
+            results = model.track(frame, persist=True, verbose=args.verbose, classes=target_labels, device=args.device)
 
         # Nếu chế độ debug được bật, tô màu khu vực ROI lên frame
         if args.debug:

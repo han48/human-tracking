@@ -179,3 +179,5 @@ cython_debug/
 *.onnx
 *.mp4
 config.json*
+
+frames
